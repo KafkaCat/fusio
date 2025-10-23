@@ -26,11 +26,17 @@ async-stream = { version = "0.3" }
 backon = "1.4"
 thiserror = "2.0.17"
 moka = { version = "0.10", features = ["sync"], optional = true }
+tracing = { version = "0.1", features = ["attributes"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 rand = "0.8"
 rstest = "0.21"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+hdrhistogram = "7.5"
+csv = "1.3"
+rust-ini = "0.21"
+chrono = "0.4"
 
 [package.metadata.docs.rs]
 all-features = true

@@ -127,6 +127,7 @@ where
     /// - Consider verifying segment continuity more strictly (e.g., ensure txn_ids are strictly
     ///   increasing without gaps and optionally validate a checksum header).
     /// - Yield between batches if recovery spans many windows to avoid starving other tasks.
+    #[tracing::instrument(skip(self))]
     pub async fn recover_orphans(&self) -> Result<usize> {
         let timer = self.store.opts.timer().clone();
         let pol = self.store.opts.backoff;
@@ -176,9 +177,12 @@ where
                 expected = 1;
             }
 
+            tracing::debug!(from_seq = ?expected, "recovering orphans");
+
             let mut adopted = 0;
             let mut max_seq = cur.last_segment_seq.unwrap_or(0);
             let mut last_txn = cur.last_txn_id;
+            let mut adopted_seqs = Vec::new();
 
             'probe: loop {
                 // List a window starting at the expected next sequence.
@@ -209,6 +213,7 @@ where
                     max_seq = id.seq;
                     expected = expected.saturating_add(1);
                     adopted += 1;
+                    adopted_seqs.push(id.seq);
                     progressed = true;
                 }
                 if !progressed {
@@ -219,6 +224,12 @@ where
             if adopted == 0 {
                 return Ok(0);
             }
+
+            tracing::warn!(
+                count = adopted,
+                segment_seqs = ?adopted_seqs,
+                "orphan segments recovered"
+            );
 
             // Publish updated HEAD via CAS. Retry on conflicts with backoff until exhausted.
             let new_head = HeadJson {
@@ -258,13 +269,17 @@ where
     R: RetentionPolicy + Clone,
 {
     /// Open a read session, always acquiring a lease so GC honors the snapshot.
+    #[tracing::instrument(skip(self), fields(session_type = "read"))]
     pub async fn session_read(&self) -> Result<ReadSession<K, V, HS, SS, CS, LS, E, R>> {
+        tracing::debug!("session_read started");
         let snap = self.snapshot().await?;
         self.session_at(snap).await
     }
 
     /// Open a write session (pinned, with lease)
+    #[tracing::instrument(skip(self), fields(session_type = "write"))]
     pub async fn session_write(&self) -> Result<WriteSession<K, V, HS, SS, CS, LS, E, R>> {
+        tracing::debug!("session_write started");
         // Opportunistically adopt durable-but-unpublished segments before opening a writer.
         self.recover_orphans().await?;
         let snap = self.snapshot().await?;
@@ -326,15 +341,17 @@ where
         Ok(result)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn snapshot(&self) -> Result<Snapshot> {
-        match self.store.head.load().await? {
-            None => Ok(Snapshot {
+        tracing::debug!("loading snapshot");
+        let snap = match self.store.head.load().await? {
+            None => Snapshot {
                 head_tag: None,
                 txn_id: TxnId(0),
                 last_segment_seq: None,
                 checkpoint_seq: None,
                 checkpoint_id: None,
-            }),
+            },
             Some((h, tag)) => {
                 let (checkpoint_id, checkpoint_seq) = if let Some(id) = h.checkpoint_id.as_ref() {
                     let meta = self.store.checkpoint.get_checkpoint_meta(id).await?;
@@ -342,15 +359,21 @@ where
                 } else {
                     (None, None)
                 };
-                Ok(Snapshot {
+                Snapshot {
                     head_tag: Some(tag),
                     txn_id: TxnId(h.last_txn_id),
                     last_segment_seq: h.last_segment_seq,
                     checkpoint_seq,
                     checkpoint_id,
-                })
+                }
             }
-        }
+        };
+        tracing::info!(
+            txn_id = %snap.txn_id.0,
+            last_segment_seq = ?snap.last_segment_seq,
+            "snapshot loaded"
+        );
+        Ok(snap)
     }
 }
 

@@ -123,7 +123,10 @@ where
             Some(content_type.to_string())
         };
         let meta_headers = vec![(TXN_ID_HEADER.to_string(), txn_id.to_string())];
+        let size_bytes = payload.len();
         async move {
+            tracing::debug!(seq, txn_id, size_bytes, "writing segment");
+
             let path = Path::parse(&key).map_err(Error::other)?;
             self.fs
                 .put_conditional(
@@ -135,7 +138,11 @@ where
                 )
                 .await
                 .map_err(map_fs_error)?;
-            Ok(SegmentId { seq })
+
+            let segment_id = SegmentId { seq };
+            tracing::info!(seq, txn_id, segment_id = ?segment_id, "segment written");
+
+            Ok(segment_id)
         }
     }
 
