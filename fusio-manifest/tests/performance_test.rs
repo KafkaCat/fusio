@@ -305,15 +305,18 @@ async fn test_comprehensive_sweep() {
     let bucket = env::var("FUSIO_MANIFEST_BUCKET")
         .unwrap_or_else(|_| "liguoso-tonbo-s3".to_string());
 
-    println!("\n=== Running Comprehensive Configuration Sweep (V2 - Full Matrix) ===");
+    println!("\n=== Running Comprehensive Configuration Sweep (V2 - Full Matrix + Overlap Ratio) ===");
     println!("Total configurations: {}", total_configs);
-    println!("Config space: (3 writers × 4 rates × 4 readers × 3 reader_rates) - baseline = {} tests", total_configs);
+    println!("Config space:");
+    println!("  - Writer/Reader matrix: (3 writers × 4 rates × 4 readers × 3 reader_rates) - baseline = 132 tests");
+    println!("  - Overlap ratio sweep: 2 writers @ 0.1 TPS × 10 overlap ratios = 10 tests");
     println!("Writer rates: [0.02, 0.05, 0.1, 0.2]");
     println!("Reader rates: [100, 200, 300]");
+    println!("Overlap ratios: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]");
     println!("Note: W1@0.1 excluded (already tested in baseline)");
-    println!("Duration per test: 60 seconds");
+    println!("Duration: 60s for matrix tests, 120s for overlap tests");
     println!("Parallel execution: 8 concurrent tests");
-    println!("Estimated total time: ~{} minutes", (total_configs * 60) / (8 * 60));
+    println!("Estimated total time: ~{} minutes", (132 * 60 + 10 * 120) / (8 * 60));
     println!("S3 Bucket: {}", bucket);
     println!("S3 Prefix: {}\n", sweep_prefix);
 
@@ -419,7 +422,7 @@ async fn test_comprehensive_sweep() {
     export_results_csv("comprehensive_sweep_v2.csv", &all_results)
         .expect("Failed to export CSV");
 
-    println!("\nGenerating 3 visualization graphs...");
+    println!("\nGenerating 4 visualization graphs...");
     let plot_result = std::process::Command::new("python3")
         .args(["plot_results.py", "comprehensive_sweep_v2.csv", "--comprehensive"])
         .status();
@@ -427,7 +430,7 @@ async fn test_comprehensive_sweep() {
     match plot_result {
         Ok(status) if status.success() => {
             println!("✅ Comprehensive sweep plot generated:");
-            println!("   - comprehensive_sweep_v2.png (contains all 3 metrics)");
+            println!("   - comprehensive_sweep_v2.png (contains all 4 metrics)");
         }
         Ok(status) => {
             println!("⚠️  Plot generation failed with status: {}", status);
@@ -466,6 +469,42 @@ async fn test_comprehensive_sweep() {
             summary.write_tps
         );
     }
+
+    println!("\n=== Overlap Ratio Sweep Results (2 Writers @ 0.1 TPS) ===");
+    println!("{:<15} {:<20} {:<20} {:<15}", "Overlap Ratio", "Failure Rate (%)", "Retry Success (%)", "Write TPS");
+    println!("{}", "-".repeat(70));
+
+    let overlap_results: Vec<_> = all_results.iter()
+        .filter(|(config, _)| config.num_writers == 2 && config.writer_rate == 0.1 && config.key_overlap_ratio > 0.0)
+        .collect();
+
+    let mut found_sweet_spot = false;
+    for (config, summary) in &overlap_results {
+        let failure_pct = summary.precondition_failure_rate * 100.0;
+        let retry_success_pct = summary.retry_success_rate * 100.0;
+
+        let marker = if (failure_pct - 10.0).abs() < 2.0 {
+            found_sweet_spot = true;
+            " ← Sweet spot!"
+        } else {
+            ""
+        };
+
+        println!(
+            "{:<15.2} {:<20.2} {:<20.2} {:<15.2}{}",
+            config.key_overlap_ratio,
+            failure_pct,
+            retry_success_pct,
+            summary.write_tps,
+            marker
+        );
+    }
+
+    if found_sweet_spot {
+        println!("\n✅ Found configuration(s) near 10% failure rate target");
+    } else {
+        println!("\n⚠️  No configuration found near 10% failure rate. Consider adjusting overlap ratios.");
+    }
 }
 
 #[tokio::test]
@@ -476,10 +515,10 @@ async fn test_chaos_sweep() {
 
     init_tracing();
 
-    println!("\n=== Loading Best Configuration from Phase 3 ===");
-    let mut best_config = get_best_config_from_csv("comprehensive_sweep.csv")
-        .expect("Failed to load best config from CSV. Run test_comprehensive_sweep first.");
-
+    println!("\n=== Using Baseline Configuration for Chaos Test ===");
+    let mut best_config = WorkloadConfig::default();
+    best_config.num_writers = 2;
+    best_config.writer_rate = 0.1;
     best_config.duration = Duration::from_secs(300);
 
     println!("Best config: num_writers={}, writer_rate={}, key_overlap_ratio={}, num_readers={}, reader_rate={}",

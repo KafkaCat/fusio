@@ -407,8 +407,75 @@ def plot_comprehensive_v2_precondition_failure(csv_file):
     print(f"✅ Precondition failure plot saved to {output_file}")
     plt.close()
 
+def plot_overlap_ratio_sweep(csv_file):
+    """Plot precondition failure rate and retry success rate vs overlap ratio."""
+    if not os.path.exists(csv_file):
+        print(f"⚠️  CSV file not found: {csv_file}")
+        return
+
+    df = pd.read_csv(csv_file)
+
+    if df.empty:
+        print(f"⚠️  CSV file is empty: {csv_file}")
+        return
+
+    print(f"Loaded {len(df)} configurations from {csv_file}")
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+    fig.suptitle('Overlap Ratio Sweep: Finding the 10% Failure Sweet Spot', fontsize=16, fontweight='bold')
+
+    # Subplot 1: Precondition Failure Rate and Retry Success Rate
+    x = df['key_overlap_ratio']
+    ax1_twin = ax1.twinx()
+
+    line1 = ax1.plot(x, df['precondition_failure_rate'] * 100, 'o-', color='red',
+                     label='Precondition Failure Rate', linewidth=2, markersize=8)
+    line2 = ax1_twin.plot(x, df['retry_success_rate'] * 100, 's-', color='green',
+                          label='Retry Success Rate', linewidth=2, markersize=8)
+
+    ax1.axhline(y=10, color='orange', linestyle='--', linewidth=2, label='10% Target', alpha=0.7)
+    ax1.set_xlabel('Key Overlap Ratio', fontsize=12)
+    ax1.set_ylabel('Precondition Failure Rate (%)', fontsize=12, color='red')
+    ax1_twin.set_ylabel('Retry Success Rate (%)', fontsize=12, color='green')
+    ax1.tick_params(axis='y', labelcolor='red')
+    ax1_twin.tick_params(axis='y', labelcolor='green')
+    ax1.set_title('Failure Rate and Retry Success vs Overlap Ratio', fontsize=14, fontweight='bold')
+
+    lines = line1 + line2 + [plt.Line2D([0], [0], color='orange', linestyle='--', linewidth=2)]
+    labels = ['Precondition Failure Rate', 'Retry Success Rate', '10% Target']
+    ax1.legend(lines, labels, fontsize=10, loc='upper left')
+    ax1.grid(True, alpha=0.3)
+
+    # Subplot 2: Write TPS vs Overlap Ratio
+    ax2.plot(x, df['write_tps'], 'o-', color='blue', label='Write TPS', linewidth=2, markersize=8)
+    ax2.set_xlabel('Key Overlap Ratio', fontsize=12)
+    ax2.set_ylabel('Write Throughput (TPS)', fontsize=12)
+    ax2.set_title('Write Throughput vs Overlap Ratio', fontsize=14, fontweight='bold')
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3)
+
+    # Annotate sweet spot (closest to 10% failure rate)
+    df['diff_from_10'] = abs(df['precondition_failure_rate'] * 100 - 10)
+    sweet_spot_idx = df['diff_from_10'].idxmin()
+    sweet_spot = df.loc[sweet_spot_idx]
+
+    ax1.annotate('Sweet Spot!',
+                xy=(sweet_spot['key_overlap_ratio'], sweet_spot['precondition_failure_rate'] * 100),
+                xytext=(10, -30), textcoords='offset points',
+                bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.7),
+                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0', color='black'),
+                fontsize=10, fontweight='bold')
+
+    plt.tight_layout()
+    output_file = csv_file.replace('.csv', '.png')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"✅ Overlap ratio sweep plot saved to {output_file}")
+    print(f"   Sweet spot: overlap_ratio={sweet_spot['key_overlap_ratio']:.2f}, "
+          f"failure_rate={sweet_spot['precondition_failure_rate']*100:.2f}%")
+    plt.close()
+
 def plot_comprehensive_v2_all(csv_file):
-    """Generate single PNG with all 3 comprehensive v2 plots as subplots."""
+    """Generate single PNG with all 4 comprehensive v2 plots as subplots."""
     if not os.path.exists(csv_file):
         print(f"⚠️  CSV file not found: {csv_file}")
         return
@@ -423,8 +490,16 @@ def plot_comprehensive_v2_all(csv_file):
         baseline_df = pd.read_csv('test_baseline.csv')
         print(f"  📌 Including baseline data from test_baseline.csv")
 
-    # Create figure with 3 vertically stacked subplots
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(20, 16))
+    # Extract overlap ratio data from main CSV (2 writers @ 0.1 TPS with overlap > 0)
+    overlap_df = df[(df['num_writers'] == 2) &
+                    (df['writer_rate'] == 0.1) &
+                    (df['key_overlap_ratio'] > 0.0)].copy()
+    if len(overlap_df) > 0:
+        overlap_df = overlap_df.sort_values('key_overlap_ratio')
+        print(f"  📌 Found {len(overlap_df)} overlap ratio configurations in main CSV")
+
+    # Create figure with 4 vertically stacked subplots
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(20, 20))
     fig.suptitle('Comprehensive Configuration Sweep Results', fontsize=16, fontweight='bold', y=0.995)
 
     # Subplot 1: Read Latency
@@ -487,6 +562,51 @@ def plot_comprehensive_v2_all(csv_file):
     ax3.legend(fontsize=11, loc='best')
     ax3.grid(True, alpha=0.3)
 
+    # Subplot 4: Overlap Ratio Analysis (embedded in comprehensive CSV)
+    if len(overlap_df) > 0:
+        # Use overlap ratio sweep data from main CSV
+        x_overlap = overlap_df['key_overlap_ratio']
+        ax4_twin = ax4.twinx()
+
+        line1 = ax4.plot(x_overlap, overlap_df['precondition_failure_rate'] * 100, 'o-',
+                        color='red', label='Precondition Failure Rate', linewidth=2, markersize=8)
+        line2 = ax4_twin.plot(x_overlap, overlap_df['retry_success_rate'] * 100, 's-',
+                             color='green', label='Retry Success Rate', linewidth=2, markersize=8)
+
+        ax4.axhline(y=10, color='orange', linestyle='--', linewidth=2, alpha=0.7)
+        ax4.set_xlabel('Key Overlap Ratio', fontsize=12)
+        ax4.set_ylabel('Precondition Failure Rate (%)', fontsize=12, color='red')
+        ax4_twin.set_ylabel('Retry Success Rate (%)', fontsize=12, color='green')
+        ax4.tick_params(axis='y', labelcolor='red')
+        ax4_twin.tick_params(axis='y', labelcolor='green')
+        ax4.set_title('Overlap Ratio Impact on Failures and Retries (2 Writers @ 0.1 TPS)', fontsize=14, fontweight='bold')
+
+        lines = line1 + line2 + [plt.Line2D([0], [0], color='orange', linestyle='--', linewidth=2)]
+        labels = ['Precondition Failure Rate', 'Retry Success Rate', '10% Target']
+        ax4.legend(lines, labels, fontsize=11, loc='upper left')
+        ax4.grid(True, alpha=0.3)
+
+        # Annotate sweet spot if found
+        overlap_df_copy = overlap_df.copy()
+        overlap_df_copy['diff_from_10'] = abs(overlap_df_copy['precondition_failure_rate'] * 100 - 10)
+        sweet_spot_idx = overlap_df_copy['diff_from_10'].idxmin()
+        sweet_spot = overlap_df_copy.loc[sweet_spot_idx]
+
+        ax4.annotate('Sweet Spot',
+                    xy=(sweet_spot['key_overlap_ratio'], sweet_spot['precondition_failure_rate'] * 100),
+                    xytext=(10, -30), textcoords='offset points',
+                    bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.7),
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0', color='black'),
+                    fontsize=9, fontweight='bold')
+    else:
+        # No overlap ratio data in comprehensive sweep
+        ax4.text(0.5, 0.5, 'No overlap ratio data found in comprehensive sweep CSV\n(Expected 2 writers @ 0.1 TPS with key_overlap_ratio > 0)',
+                ha='center', va='center', fontsize=14, color='gray',
+                transform=ax4.transAxes)
+        ax4.set_title('Overlap Ratio Analysis (Not Available)', fontsize=14, fontweight='bold')
+        ax4.set_xticks([])
+        ax4.set_yticks([])
+
     plt.tight_layout()
     output_file = csv_file.replace('.csv', '.png')
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
@@ -511,6 +631,10 @@ def main():
             plot_comprehensive_v2_all(csv_file)
         elif len(sys.argv) > 2 and sys.argv[2] == '--latency':
             plot_latency_sweep(csv_file)
+        elif len(sys.argv) > 2 and sys.argv[2] == '--overlap-ratio':
+            plot_overlap_ratio_sweep(csv_file)
+        elif csv_file == 'sweep_overlap_ratio.csv' or 'overlap_ratio' in csv_file:
+            plot_overlap_ratio_sweep(csv_file)
         elif csv_file == 'comprehensive_sweep.csv' or 'comprehensive' in csv_file:
             plot_comprehensive_sweep(csv_file)
         elif csv_file == 'chaos_sweep.csv' or 'chaos' in csv_file or (len(sys.argv) > 2 and sys.argv[2] == '--chaos'):

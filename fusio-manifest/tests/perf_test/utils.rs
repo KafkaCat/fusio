@@ -205,6 +205,23 @@ pub fn generate_all_configs_v2() -> Vec<WorkloadConfig> {
         }
     }
 
+    // Add overlap ratio sweep configs: 2 writers @ 0.1 TPS with varying overlap
+    let overlap_ratios = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5];
+    for &overlap_ratio in &overlap_ratios {
+        configs.push(WorkloadConfig {
+            num_writers: 2,
+            num_readers: 2,
+            duration: Duration::from_secs(120),
+            writer_rate: 0.1,
+            reader_rate: 100.0,
+            value_size: 256,
+            max_retry_count: 1,
+            key_pool_size: 100,
+            key_overlap_ratio: overlap_ratio,
+            write_delete_ratio: 0.0,
+        });
+    }
+
     configs
 }
 
