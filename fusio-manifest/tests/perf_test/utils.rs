@@ -1,7 +1,9 @@
 use std::time::{Duration, SystemTime};
 use std::path::PathBuf;
 use std::env;
+use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
 use ini::Ini;
+use rand::{seq::SliceRandom, rngs::StdRng, SeedableRng};
 
 #[derive(Debug, Clone)]
 pub struct WorkloadConfig {
@@ -10,27 +12,73 @@ pub struct WorkloadConfig {
     pub duration: Duration,
     pub writer_rate: f64,
     pub reader_rate: f64,
+    pub value_size: usize,
+    pub max_retry_count: usize,
+
     pub key_pool_size: usize,
     pub key_overlap_ratio: f64,
-    pub value_size: usize,
     pub write_delete_ratio: f64,
-    pub max_retry_count: usize,
 }
 
 impl Default for WorkloadConfig {
     fn default() -> Self {
         Self {
-            num_writers: 2,
-            num_readers: 10,
+            num_writers: 1,
+            num_readers: 2,
             duration: Duration::from_secs(120),
             writer_rate: 0.1,
-            reader_rate: 1.0,
-            key_pool_size: 100,
-            key_overlap_ratio: 0.2,
+            reader_rate: 100.0,
             value_size: 256,
-            write_delete_ratio: 0.1,
             max_retry_count: 1,
+
+            key_pool_size: 100,
+            key_overlap_ratio: 0.0,
+            write_delete_ratio: 0.0,
         }
+    }
+}
+
+pub struct KeyRegistry {
+    written_keys: Arc<Mutex<Vec<String>>>,
+    next_key_id: Arc<AtomicUsize>,
+}
+
+impl KeyRegistry {
+    pub fn new() -> Self {
+        Self {
+            written_keys: Arc::new(Mutex::new(Vec::new())),
+            next_key_id: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn allocate_next_key(&self) -> String {
+        let id = self.next_key_id.fetch_add(1, Ordering::SeqCst);
+        format!("key_{:06}", id)
+    }
+
+    pub fn register_written_key(&self, key: String) {
+        self.written_keys.lock().unwrap().push(key);
+    }
+
+    pub fn get_random_keys(&self, count: usize) -> Vec<String> {
+        let keys = self.written_keys.lock().unwrap();
+        if keys.is_empty() {
+            return Vec::new();
+        }
+
+        let mut rng = StdRng::from_entropy();
+        let sample_size = count.min(keys.len());
+        keys.choose_multiple(&mut rng, sample_size)
+            .cloned()
+            .collect()
+    }
+
+    pub fn all_keys(&self) -> Vec<String> {
+        self.written_keys.lock().unwrap().clone()
+    }
+
+    pub fn key_count(&self) -> usize {
+        self.written_keys.lock().unwrap().len()
     }
 }
 
@@ -116,13 +164,48 @@ pub fn create_test_prefix_in_sweep(sweep_prefix: &str, test_index: usize, config
 
 pub fn create_config_label(config: &WorkloadConfig) -> String {
     format!(
-        "W{}_WR{:.2}_O{:.1}_RD{}_RT{}",
+        "W{}_WR{:.2}_RD{}_RT{}",
         config.num_writers,
         config.writer_rate,
-        config.key_overlap_ratio,
         config.num_readers,
         config.reader_rate as u32
     )
+}
+
+pub fn generate_all_configs_v2() -> Vec<WorkloadConfig> {
+    let num_writers_values = [1, 2, 3];
+    let writer_rate_values = [0.02, 0.05, 0.1, 0.2];
+    let num_readers_values = [3, 4, 5, 6];
+    let reader_rate_values = [100.0, 200.0, 300.0];
+
+    let mut configs = Vec::new();
+
+    for &num_writers in &num_writers_values {
+        for &writer_rate in &writer_rate_values {
+            if num_writers == 1 && writer_rate == 0.1 {
+                continue;
+            }
+
+            for &num_readers in &num_readers_values {
+                for &reader_rate in &reader_rate_values {
+                    configs.push(WorkloadConfig {
+                        num_writers,
+                        num_readers,
+                        duration: Duration::from_secs(60),
+                        writer_rate,
+                        reader_rate,
+                        value_size: 256,
+                        max_retry_count: 1,
+                        key_pool_size: 100,
+                        key_overlap_ratio: 0.0,
+                        write_delete_ratio: 0.0,
+                    });
+                }
+            }
+        }
+    }
+
+    configs
 }
 
 pub fn generate_all_configs() -> Vec<WorkloadConfig> {
@@ -145,11 +228,11 @@ pub fn generate_all_configs() -> Vec<WorkloadConfig> {
                             duration: Duration::from_secs(60),
                             writer_rate,
                             reader_rate,
+                            value_size: 256,
+                            max_retry_count: 1,
                             key_pool_size: 100,
                             key_overlap_ratio,
-                            value_size: 256,
                             write_delete_ratio: 0.1,
-                            max_retry_count: 1,
                         });
                     }
                 }
@@ -201,11 +284,11 @@ pub fn get_best_config_from_csv(csv_path: &str) -> Result<WorkloadConfig, Box<dy
                 duration: Duration::from_secs(duration_secs as u64),
                 writer_rate,
                 reader_rate,
+                value_size: 256,
+                max_retry_count,
                 key_pool_size,
                 key_overlap_ratio,
-                value_size: 256,
                 write_delete_ratio: 0.1,
-                max_retry_count,
             });
         }
     }

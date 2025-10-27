@@ -1,7 +1,7 @@
 use crate::perf_test::{
     client::{ClientType, MockClient},
     metrics::{MetricsCollector, MetricsSummary},
-    utils::{KeyPool, WorkloadConfig},
+    utils::{KeyPool, KeyRegistry, WorkloadConfig},
 };
 use fusio::executor::tokio::TokioExecutor;
 use fusio_manifest::s3::S3Manifest;
@@ -53,7 +53,8 @@ impl WorkloadDriver {
                 writer_id,
                 ClientType::Writer { id: writer_id },
                 self.manifest.clone(),
-                key_pool.clone(),
+                Some(key_pool.clone()),
+                None,
                 Arc::new(self.config.clone()),
                 self.metrics.clone(),
             );
@@ -70,7 +71,8 @@ impl WorkloadDriver {
                 reader_id,
                 ClientType::Reader { id: reader_id },
                 self.manifest.clone(),
-                key_pool.clone(),
+                Some(key_pool.clone()),
+                None,
                 Arc::new(self.config.clone()),
                 self.metrics.clone(),
             );

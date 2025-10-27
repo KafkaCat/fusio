@@ -28,11 +28,13 @@ pub struct MetricsCollector {
     write_success_latency: Arc<Mutex<Histogram<u64>>>,
     precondition_failure_latency: Arc<Mutex<Histogram<u64>>>,
     read_latency: Arc<Mutex<Histogram<u64>>>,
+
     total_writes_attempted: AtomicU64,
     total_writes_succeeded: AtomicU64,
     total_precondition_failures: AtomicU64,
     total_write_errors: AtomicU64,
     total_reads: AtomicU64,
+
     retry_counts: Arc<Mutex<Vec<usize>>>,
     start_time: Instant,
 

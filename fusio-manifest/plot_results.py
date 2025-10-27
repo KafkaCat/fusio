@@ -283,6 +283,175 @@ def plot_chaos_sweep(csv_file):
     print(f"✅ Chaos plot saved to {output_file}")
     plt.close()
 
+def plot_latency_sweep(csv_file):
+    """Plot latency trends across configurations with connected dots."""
+    if not os.path.exists(csv_file):
+        print(f"⚠️  CSV file not found: {csv_file}")
+        return
+
+    df = pd.read_csv(csv_file)
+    df = df.sort_values(['num_writers', 'writer_rate'])
+    df['config'] = df.apply(lambda row: f"W{int(row['num_writers'])}_R{row['writer_rate']:.2f}", axis=1)
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+    x = range(len(df))
+
+    # Plot writer and reader latencies
+    ax.plot(x, df['write_p50_ms'], 'o-', color='blue', label='Writer p50', linewidth=2, markersize=8)
+    ax.plot(x, df['write_p99_ms'], 'o--', color='blue', label='Writer p99', linewidth=2, markersize=8, alpha=0.7)
+    ax.plot(x, df['read_p50_ms'], 's-', color='green', label='Reader p50', linewidth=2, markersize=8)
+    ax.plot(x, df['read_p99_ms'], 's--', color='green', label='Reader p99', linewidth=2, markersize=8, alpha=0.7)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(df['config'].tolist(), rotation=45, ha='right')
+    ax.set_xlabel('Configuration (Writers_WriterRate)', fontsize=12)
+    ax.set_ylabel('Latency (ms)', fontsize=12)
+    ax.set_title('Latency Trends Across Writer Configurations', fontsize=14, fontweight='bold')
+    ax.legend(fontsize=11, loc='best')
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    output_file = csv_file.replace('.csv', '_latency.png')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"✅ Latency plot saved to {output_file}")
+    plt.close()
+
+def plot_comprehensive_v2_read_latency(csv_file):
+    """Plot read latency (p50, p99) vs config - all reader configs + baseline."""
+    if not os.path.exists(csv_file):
+        print(f"⚠️  CSV file not found: {csv_file}")
+        return
+
+    df = pd.read_csv(csv_file)
+
+    baseline_df = None
+    if os.path.exists('test_baseline.csv'):
+        baseline_df = pd.read_csv('test_baseline.csv')
+        print(f"  📌 Including baseline data from test_baseline.csv")
+
+    df = df.sort_values(['num_readers', 'reader_rate', 'num_writers', 'writer_rate'])
+    df['config'] = df.apply(lambda row: f"R{int(row['num_readers'])}@{int(row['reader_rate'])}_W{int(row['num_writers'])}@{row['writer_rate']:.2f}", axis=1)
+
+    fig, ax = plt.subplots(figsize=(20, 8))
+    x = range(len(df))
+
+    ax.plot(x, df['read_p50_ms'], 'o-', color='green', label='Reader p50', linewidth=2, markersize=6)
+    ax.plot(x, df['read_p99_ms'], 's--', color='darkgreen', label='Reader p99', linewidth=2, markersize=6, alpha=0.7)
+
+    if baseline_df is not None and len(baseline_df) > 0:
+        baseline_p50 = baseline_df['read_p50_ms'].iloc[0]
+        baseline_p99 = baseline_df['read_p99_ms'].iloc[0]
+        ax.axhline(y=baseline_p50, color='green', linestyle=':', linewidth=2, label=f'Baseline p50 ({baseline_p50:.1f}ms)', alpha=0.8)
+        ax.axhline(y=baseline_p99, color='darkgreen', linestyle=':', linewidth=2, label=f'Baseline p99 ({baseline_p99:.1f}ms)', alpha=0.8)
+
+    ax.set_xticks(x[::max(1, len(x)//30)])
+    ax.set_xticklabels(df['config'].tolist()[::max(1, len(x)//30)], rotation=90, ha='right', fontsize=8)
+    ax.set_xlabel('Configuration (Readers@ReadRate_Writers@WriteRate)', fontsize=12)
+    ax.set_ylabel('Read Latency (ms)', fontsize=12)
+    ax.set_title('Read Latency vs Configuration (with Baseline Reference)', fontsize=14, fontweight='bold')
+    ax.legend(fontsize=11, loc='best')
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    output_file = csv_file.replace('.csv', '_read_latency.png')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"✅ Read latency plot saved to {output_file}")
+    plt.close()
+
+def plot_comprehensive_v2_write_latency(csv_file):
+    """Plot write latency (p50, p99) vs config - all configs + baseline."""
+    if not os.path.exists(csv_file):
+        print(f"⚠️  CSV file not found: {csv_file}")
+        return
+
+    df = pd.read_csv(csv_file)
+
+    baseline_df = None
+    if os.path.exists('test_baseline.csv'):
+        baseline_df = pd.read_csv('test_baseline.csv')
+        print(f"  📌 Including baseline data from test_baseline.csv")
+
+    df = df.sort_values(['num_writers', 'writer_rate', 'num_readers', 'reader_rate'])
+    df['config'] = df.apply(lambda row: f"W{int(row['num_writers'])}@{row['writer_rate']:.2f}_R{int(row['num_readers'])}@{int(row['reader_rate'])}", axis=1)
+
+    fig, ax = plt.subplots(figsize=(20, 8))
+    x = range(len(df))
+
+    ax.plot(x, df['write_p50_ms'], 'o-', color='blue', label='Writer p50', linewidth=2, markersize=6)
+    ax.plot(x, df['write_p99_ms'], 's--', color='darkblue', label='Writer p99', linewidth=2, markersize=6, alpha=0.7)
+
+    if baseline_df is not None and len(baseline_df) > 0:
+        baseline_p50 = baseline_df['write_p50_ms'].iloc[0]
+        baseline_p99 = baseline_df['write_p99_ms'].iloc[0]
+        ax.axhline(y=baseline_p50, color='blue', linestyle=':', linewidth=2, label=f'Baseline p50 ({baseline_p50:.1f}ms)', alpha=0.8)
+        ax.axhline(y=baseline_p99, color='darkblue', linestyle=':', linewidth=2, label=f'Baseline p99 ({baseline_p99:.1f}ms)', alpha=0.8)
+
+    ax.set_xticks(x[::max(1, len(x)//30)])
+    ax.set_xticklabels(df['config'].tolist()[::max(1, len(x)//30)], rotation=90, ha='right', fontsize=8)
+    ax.set_xlabel('Configuration (Writers@WriteRate_Readers@ReadRate)', fontsize=12)
+    ax.set_ylabel('Write Latency (ms)', fontsize=12)
+    ax.set_title('Write Latency vs Configuration (with Baseline Reference)', fontsize=14, fontweight='bold')
+    ax.legend(fontsize=11, loc='best')
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    output_file = csv_file.replace('.csv', '_write_latency.png')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"✅ Write latency plot saved to {output_file}")
+    plt.close()
+
+def plot_comprehensive_v2_precondition_failure(csv_file):
+    """Plot precondition failure rate vs writer config only (readers don't affect this) + baseline."""
+    if not os.path.exists(csv_file):
+        print(f"⚠️  CSV file not found: {csv_file}")
+        return
+
+    df = pd.read_csv(csv_file)
+
+    baseline_df = None
+    baseline_rate = 0.0
+    if os.path.exists('test_baseline.csv'):
+        baseline_df = pd.read_csv('test_baseline.csv')
+        baseline_rate = baseline_df['precondition_failure_rate'].iloc[0]
+        print(f"  📌 Including baseline data from test_baseline.csv (failure rate: {baseline_rate:.2f}%)")
+
+    grouped = df.groupby(['num_writers', 'writer_rate']).agg({
+        'precondition_failure_rate': 'mean'
+    }).reset_index()
+
+    grouped = grouped.sort_values(['num_writers', 'writer_rate'])
+    grouped['config'] = grouped.apply(lambda row: f"W{int(row['num_writers'])}@{row['writer_rate']:.2f}", axis=1)
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+    x = range(len(grouped))
+
+    ax.plot(x, grouped['precondition_failure_rate'], 'o-', color='red', label='Precondition Failure Rate', linewidth=2, markersize=8)
+
+    if baseline_df is not None:
+        ax.axhline(y=baseline_rate, color='red', linestyle=':', linewidth=2, label=f'Baseline (W1@0.1): {baseline_rate:.2f}%', alpha=0.8)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(grouped['config'].tolist(), rotation=45, ha='right')
+    ax.set_xlabel('Writer Configuration (Writers@WriteRate)', fontsize=12)
+    ax.set_ylabel('Precondition Failure Rate (%)', fontsize=12)
+    ax.set_title('Precondition Failure Rate vs Writer Configuration (with Baseline Reference)', fontsize=14, fontweight='bold')
+    ax.legend(fontsize=11, loc='best')
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    output_file = csv_file.replace('.csv', '_precondition_failure.png')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"✅ Precondition failure plot saved to {output_file}")
+    plt.close()
+
+def plot_comprehensive_v2_all(csv_file):
+    """Generate all 3 comprehensive v2 plots."""
+    print(f"\n📊 Generating 3 comprehensive sweep plots from {csv_file}...")
+    plot_comprehensive_v2_read_latency(csv_file)
+    plot_comprehensive_v2_write_latency(csv_file)
+    plot_comprehensive_v2_precondition_failure(csv_file)
+    print(f"\n✅ All 3 plots generated successfully!")
+
 def main():
     sns.set_style("whitegrid")
 
@@ -297,7 +466,11 @@ def main():
     if len(sys.argv) > 1:
         csv_file = sys.argv[1]
 
-        if csv_file == 'comprehensive_sweep.csv' or 'comprehensive' in csv_file:
+        if len(sys.argv) > 2 and sys.argv[2] == '--comprehensive':
+            plot_comprehensive_v2_all(csv_file)
+        elif len(sys.argv) > 2 and sys.argv[2] == '--latency':
+            plot_latency_sweep(csv_file)
+        elif csv_file == 'comprehensive_sweep.csv' or 'comprehensive' in csv_file:
             plot_comprehensive_sweep(csv_file)
         elif csv_file == 'chaos_sweep.csv' or 'chaos' in csv_file or (len(sys.argv) > 2 and sys.argv[2] == '--chaos'):
             plot_chaos_sweep(csv_file)

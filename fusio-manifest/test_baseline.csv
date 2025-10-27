@@ -1,2 +1,2 @@
-num_writers,num_readers,writer_rate,reader_rate,key_pool_size,key_overlap_ratio,max_retry_count,duration_secs,precondition_failure_rate,write_tps,read_tps,write_p50_ms,write_p95_ms,write_p99_ms,precond_p50_ms,precond_p99_ms,read_p50_ms,read_p99_ms,avg_retry_count
-2,10,0.1,1,100,0.2,1,120,0.4545,0.18,6.76,1728.51,3753.98,3776.51,1550.34,3745.79,1126.40,2392.06,0.45
+config_label,num_writers,num_readers,writer_rate,reader_rate,key_pool_size,key_overlap_ratio,max_retry_count,duration_secs,precondition_failure_rate,write_tps,read_tps,write_p50_ms,write_p95_ms,write_p99_ms,precond_p50_ms,precond_p99_ms,read_p50_ms,read_p99_ms,avg_retry_count,total_retry_failures,total_max_retries_exceeded,retry_failure_rate,retry_success_rate
+W1_WR0.10_RD2_RT100,1,2,0.1,100,100,0,1,120,0.0000,0.10,1.71,1223.68,1756.16,1756.16,0.00,0.00,809.47,1795.07,0.00,0,0,0.0000,0.0000

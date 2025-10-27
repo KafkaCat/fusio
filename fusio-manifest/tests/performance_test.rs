@@ -3,7 +3,7 @@ mod perf_test;
 use fusio::executor::tokio::TokioExecutor;
 use fusio_manifest::{context::ManifestContext, s3::{self, S3Manifest}};
 use perf_test::{
-    utils::{create_test_prefix, create_config_label, create_sweep_prefix, create_test_prefix_in_sweep, generate_all_configs, load_aws_credentials, WorkloadConfig},
+    utils::{create_test_prefix, create_config_label, create_sweep_prefix, create_test_prefix_in_sweep, generate_all_configs, generate_all_configs_v2, load_aws_credentials, WorkloadConfig},
     visualization::{export_results_csv, export_single_result_csv},
     workload::WorkloadDriver,
 };
@@ -223,9 +223,17 @@ async fn test_baseline() {
 
     println!("\n💡 To generate plots, run: python3 plot_results.py test_baseline.csv num_writers \"Baseline Test\"");
 
+    println!("\n📊 Latency Summary:");
+    println!("  Writer p50: {:.2}ms, p99: {:.2}ms", summary.write_p50_ms, summary.write_p99_ms);
+    println!("  Reader p50: {:.2}ms, p99: {:.2}ms", summary.read_p50_ms, summary.read_p99_ms);
+    println!("  Precondition failures: {} ({:.2}%)",
+        summary.total_precondition_failures,
+        summary.precondition_failure_rate * 100.0
+    );
+
     assert!(
-        summary.precondition_failure_rate < 0.5,
-        "Precondition failure rate too high: {:.2}%",
+        summary.precondition_failure_rate < 0.1,
+        "Expected low precondition failure rate with 1 writer, but got: {:.2}%",
         summary.precondition_failure_rate * 100.0
     );
 
@@ -290,18 +298,22 @@ async fn test_comprehensive_sweep() {
 
     init_tracing();
 
-    let all_configs = generate_all_configs();
+    let all_configs = generate_all_configs_v2();
     let total_configs = all_configs.len();
 
     let sweep_prefix = create_sweep_prefix();
     let bucket = env::var("FUSIO_MANIFEST_BUCKET")
         .unwrap_or_else(|_| "liguoso-tonbo-s3".to_string());
 
-    println!("\n=== Running Comprehensive Configuration Sweep ===");
+    println!("\n=== Running Comprehensive Configuration Sweep (V2 - Full Matrix) ===");
     println!("Total configurations: {}", total_configs);
+    println!("Config space: (3 writers × 4 rates × 4 readers × 3 reader_rates) - baseline = {} tests", total_configs);
+    println!("Writer rates: [0.02, 0.05, 0.1, 0.2]");
+    println!("Reader rates: [100, 200, 300]");
+    println!("Note: W1@0.1 excluded (already tested in baseline)");
     println!("Duration per test: 60 seconds");
     println!("Parallel execution: 8 concurrent tests");
-    println!("Estimated total time: 20-25 minutes");
+    println!("Estimated total time: ~{} minutes", (total_configs * 60) / (8 * 60));
     println!("S3 Bucket: {}", bucket);
     println!("S3 Prefix: {}\n", sweep_prefix);
 
@@ -404,25 +416,28 @@ async fn test_comprehensive_sweep() {
         total_duration.as_secs() % 60);
     println!("Successfully completed: {}/{} tests", all_results.len(), total_configs);
 
-    export_results_csv("comprehensive_sweep.csv", &all_results)
+    export_results_csv("comprehensive_sweep_v2.csv", &all_results)
         .expect("Failed to export CSV");
 
-    println!("\nGenerating visualizations...");
+    println!("\nGenerating 3 visualization graphs...");
     let plot_result = std::process::Command::new("python3")
-        .args(["plot_results.py", "comprehensive_sweep.csv"])
+        .args(["plot_results.py", "comprehensive_sweep_v2.csv", "--comprehensive"])
         .status();
 
     match plot_result {
         Ok(status) if status.success() => {
-            println!("✅ Plots generated successfully");
+            println!("✅ 3 plots generated successfully:");
+            println!("   - comprehensive_sweep_v2_read_latency.png");
+            println!("   - comprehensive_sweep_v2_write_latency.png");
+            println!("   - comprehensive_sweep_v2_precondition_failure.png");
         }
         Ok(status) => {
             println!("⚠️  Plot generation failed with status: {}", status);
-            println!("💡 Run manually: python3 plot_results.py comprehensive_sweep.csv");
+            println!("💡 Run manually: python3 plot_results.py comprehensive_sweep_v2.csv --comprehensive");
         }
         Err(e) => {
             println!("⚠️  Could not run plot script: {}", e);
-            println!("💡 Run manually: python3 plot_results.py comprehensive_sweep.csv");
+            println!("💡 Run manually: python3 plot_results.py comprehensive_sweep_v2.csv --comprehensive");
         }
     }
 
