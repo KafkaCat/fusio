@@ -169,113 +169,76 @@ def plot_chaos_sweep(csv_file):
         return
 
     scenario_labels = [
-        'baseline',
-        'net-delay-100ms',
-        'net-delay-200ms',
-        'net-delay-500ms',
-        'net-block-10s-3x',
-        'cpu-4threads-80pct',
-        'combined-200ms-4threads-80pct'
+        'Baseline',
+        'Net Delay 100ms',
+        'Net Delay 200ms',
+        'Net Delay 500ms',
+        'Net Block 10s×3',
+        'CPU 4T@80%',
+        'Combined'
     ]
 
     if len(df) != len(scenario_labels):
         print(f"⚠️  Expected {len(scenario_labels)} scenarios, got {len(df)}")
 
     df['scenario'] = scenario_labels[:len(df)]
+    df['write_success_rate'] = 100.0 - (df['precondition_failure_rate'] * 100.0)
 
     print(f"Loaded {len(df)} chaos scenarios from {csv_file}")
 
-    fig = plt.figure(figsize=(20, 12))
-    gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+    fig = plt.figure(figsize=(16, 12))
+    gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
     fig.suptitle('Chaos Engineering Test Results', fontsize=16, fontweight='bold')
 
-    axes = [
-        [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1]), fig.add_subplot(gs[0, 2])],
-        [fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[1, 1]), fig.add_subplot(gs[1, 2])],
-        [fig.add_subplot(gs[2, :])]
-    ]
-
-    baseline_failure_rate = df.iloc[0]['precondition_failure_rate']
-    baseline_tps = df.iloc[0]['write_tps']
-    baseline_p99 = df.iloc[0]['write_p99_ms']
-    baseline_read_p99 = df.iloc[0]['read_p99_ms']
-
-    ax1 = axes[0][0]
-    colors = ['green' if i == 0 else 'orange' if 'net' in s else 'red' if 'cpu' in s else 'purple'
-              for i, s in enumerate(df['scenario'])]
-    bars = ax1.bar(range(len(df)), df['precondition_failure_rate'] * 100, color=colors)
-    ax1.axhline(y=baseline_failure_rate * 100, color='green', linestyle='--', linewidth=2, label='Baseline')
-    ax1.set_xticks(range(len(df)))
-    ax1.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=8)
-    ax1.set_ylabel('Precondition Failure Rate (%)', fontsize=10)
-    ax1.set_title('Failure Rate Under Chaos', fontsize=11, fontweight='bold')
-    ax1.legend()
-    ax1.grid(True, axis='y', alpha=0.3)
-
-    ax2 = axes[0][1]
-    bars = ax2.bar(range(len(df)), df['write_tps'], color=colors)
-    ax2.axhline(y=baseline_tps, color='green', linestyle='--', linewidth=2, label='Baseline')
-    ax2.set_xticks(range(len(df)))
-    ax2.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=8)
-    ax2.set_ylabel('Write TPS', fontsize=10)
-    ax2.set_title('Write Throughput Under Chaos', fontsize=11, fontweight='bold')
-    ax2.legend()
-    ax2.grid(True, axis='y', alpha=0.3)
-
-    ax3 = axes[0][2]
-    ax3.plot(df['scenario'], df['write_p50_ms'], marker='o', label='p50', linewidth=2)
-    ax3.plot(df['scenario'], df['write_p95_ms'], marker='s', label='p95', linewidth=2)
-    ax3.plot(df['scenario'], df['write_p99_ms'], marker='^', label='p99', linewidth=2)
-    ax3.axhline(y=baseline_p99, color='green', linestyle='--', linewidth=2, alpha=0.5)
-    ax3.set_xticks(range(len(df)))
-    ax3.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=8)
-    ax3.set_ylabel('Write Latency (ms)', fontsize=10)
-    ax3.set_title('Write Latency Distribution Under Chaos', fontsize=11, fontweight='bold')
-    ax3.legend()
-    ax3.grid(True, alpha=0.3)
-
-    ax4 = axes[1][0]
-    degradation_pct = ((df['precondition_failure_rate'] - baseline_failure_rate) / baseline_failure_rate * 100)
-    bars = ax4.bar(range(len(df)), degradation_pct, color=colors)
-    ax4.axhline(y=0, color='black', linestyle='-', linewidth=1)
-    ax4.set_xticks(range(len(df)))
-    ax4.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=8)
-    ax4.set_ylabel('Degradation (%)', fontsize=10)
-    ax4.set_title('Failure Rate Degradation vs Baseline', fontsize=11, fontweight='bold')
-    ax4.grid(True, axis='y', alpha=0.3)
-
-    ax5 = axes[1][1]
-    tps_degradation_pct = ((df['write_tps'] - baseline_tps) / baseline_tps * 100)
-    bars = ax5.bar(range(len(df)), tps_degradation_pct, color=colors)
-    ax5.axhline(y=0, color='black', linestyle='-', linewidth=1)
-    ax5.set_xticks(range(len(df)))
-    ax5.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=8)
-    ax5.set_ylabel('Degradation (%)', fontsize=10)
-    ax5.set_title('TPS Degradation vs Baseline', fontsize=11, fontweight='bold')
-    ax5.grid(True, axis='y', alpha=0.3)
-
-    ax6 = axes[1][2]
-    ax6.plot(df['scenario'], df['read_p50_ms'], marker='o', label='p50', linewidth=2)
-    ax6.plot(df['scenario'], df['read_p99_ms'], marker='^', label='p99', linewidth=2)
-    ax6.axhline(y=baseline_read_p99, color='green', linestyle='--', linewidth=2, alpha=0.5, label='Baseline p99')
-    ax6.set_xticks(range(len(df)))
-    ax6.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=8)
-    ax6.set_ylabel('Read Latency (ms)', fontsize=10)
-    ax6.set_title('Read Latency Distribution Under Chaos', fontsize=11, fontweight='bold')
-    ax6.legend()
-    ax6.grid(True, alpha=0.3)
-
-    ax7 = axes[2][0]
+    # Subplot 1: Write Latency (top-left)
+    ax1 = fig.add_subplot(gs[0, 0])
     x = range(len(df))
+    ax1.plot(x, df['write_p50_ms'], marker='o', label='p50', linewidth=2, markersize=8, color='blue')
+    ax1.plot(x, df['write_p95_ms'], marker='s', label='p95', linewidth=2, markersize=8, color='darkblue')
+    ax1.plot(x, df['write_p99_ms'], marker='^', label='p99', linewidth=2, markersize=8, color='navy')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=10)
+    ax1.set_ylabel('Write Latency (ms)', fontsize=12)
+    ax1.set_title('Write Latency Under Chaos', fontsize=13, fontweight='bold')
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+
+    # Subplot 2: Read Latency (top-right)
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.plot(x, df['read_p50_ms'], marker='o', label='p50', linewidth=2, markersize=8, color='green')
+    ax2.plot(x, df['read_p99_ms'], marker='^', label='p99', linewidth=2, markersize=8, color='darkgreen')
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=10)
+    ax2.set_ylabel('Read Latency (ms)', fontsize=12)
+    ax2.set_title('Read Latency Under Chaos', fontsize=13, fontweight='bold')
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3)
+
+    # Subplot 3: Write Success Rate (bottom-left)
+    ax3 = fig.add_subplot(gs[1, 0])
+    colors = ['green' if i == 0 else 'orange' if 'Net' in s else 'red' if 'CPU' in s else 'purple'
+              for i, s in enumerate(df['scenario'])]
+    bars = ax3.bar(x, df['write_success_rate'], color=colors, alpha=0.7)
+    ax3.set_xticks(x)
+    ax3.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=10)
+    ax3.set_ylabel('Write Success Rate (%)', fontsize=12)
+    ax3.set_title('Write Success Rate Under Chaos', fontsize=13, fontweight='bold')
+    ax3.set_ylim([0, 105])
+    ax3.grid(True, axis='y', alpha=0.3)
+
+    # Subplot 4: Retry Effectiveness (bottom-right)
+    ax4 = fig.add_subplot(gs[1, 1])
     width = 0.35
-    ax7.bar([i - width/2 for i in x], df['retry_success_rate'] * 100, width, label='Retry Success Rate', color='green', alpha=0.7)
-    ax7.bar([i + width/2 for i in x], df['retry_failure_rate'] * 100, width, label='Retry Failure Rate', color='red', alpha=0.7)
-    ax7.set_xticks(x)
-    ax7.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=8)
-    ax7.set_ylabel('Rate (%)', fontsize=10)
-    ax7.set_title('Retry Effectiveness Analysis', fontsize=11, fontweight='bold')
-    ax7.legend()
-    ax7.grid(True, axis='y', alpha=0.3)
+    ax4.bar([i - width/2 for i in x], df['retry_success_rate'] * 100, width,
+            label='Retry Success Rate', color='green', alpha=0.7)
+    ax4.bar([i + width/2 for i in x], df['retry_failure_rate'] * 100, width,
+            label='Retry Failure Rate', color='red', alpha=0.7)
+    ax4.set_xticks(x)
+    ax4.set_xticklabels(df['scenario'], rotation=45, ha='right', fontsize=10)
+    ax4.set_ylabel('Rate (%)', fontsize=12)
+    ax4.set_title('Retry Effectiveness', fontsize=13, fontweight='bold')
+    ax4.legend(fontsize=10)
+    ax4.grid(True, axis='y', alpha=0.3)
 
     plt.tight_layout()
     output_file = f'{csv_file[:-4]}.png'
@@ -445,12 +408,90 @@ def plot_comprehensive_v2_precondition_failure(csv_file):
     plt.close()
 
 def plot_comprehensive_v2_all(csv_file):
-    """Generate all 3 comprehensive v2 plots."""
-    print(f"\n📊 Generating 3 comprehensive sweep plots from {csv_file}...")
-    plot_comprehensive_v2_read_latency(csv_file)
-    plot_comprehensive_v2_write_latency(csv_file)
-    plot_comprehensive_v2_precondition_failure(csv_file)
-    print(f"\n✅ All 3 plots generated successfully!")
+    """Generate single PNG with all 3 comprehensive v2 plots as subplots."""
+    if not os.path.exists(csv_file):
+        print(f"⚠️  CSV file not found: {csv_file}")
+        return
+
+    print(f"\n📊 Generating comprehensive sweep plot from {csv_file}...")
+
+    df = pd.read_csv(csv_file)
+
+    # Load baseline data
+    baseline_df = None
+    if os.path.exists('test_baseline.csv'):
+        baseline_df = pd.read_csv('test_baseline.csv')
+        print(f"  📌 Including baseline data from test_baseline.csv")
+
+    # Create figure with 3 vertically stacked subplots
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(20, 16))
+    fig.suptitle('Comprehensive Configuration Sweep Results', fontsize=16, fontweight='bold', y=0.995)
+
+    # Subplot 1: Read Latency
+    df_read = df.sort_values(['num_readers', 'reader_rate', 'num_writers', 'writer_rate'])
+    df_read['config'] = df_read.apply(lambda row: f"R{int(row['num_readers'])}@{int(row['reader_rate'])}_W{int(row['num_writers'])}@{row['writer_rate']:.2f}", axis=1)
+    x_read = range(len(df_read))
+    ax1.plot(x_read, df_read['read_p50_ms'], 'o-', color='green', label='Reader p50', linewidth=2, markersize=6)
+    ax1.plot(x_read, df_read['read_p99_ms'], 's--', color='darkgreen', label='Reader p99', linewidth=2, markersize=6, alpha=0.7)
+
+    if baseline_df is not None and len(baseline_df) > 0:
+        baseline_p50 = baseline_df['read_p50_ms'].iloc[0]
+        baseline_p99 = baseline_df['read_p99_ms'].iloc[0]
+        ax1.axhline(y=baseline_p50, color='green', linestyle=':', linewidth=2, label=f'Baseline p50 ({baseline_p50:.1f}ms)', alpha=0.8)
+        ax1.axhline(y=baseline_p99, color='darkgreen', linestyle=':', linewidth=2, label=f'Baseline p99 ({baseline_p99:.1f}ms)', alpha=0.8)
+
+    ax1.set_xticks(x_read[::max(1, len(x_read)//30)])
+    ax1.set_xticklabels(df_read['config'].tolist()[::max(1, len(x_read)//30)], rotation=90, ha='right', fontsize=8)
+    ax1.set_ylabel('Read Latency (ms)', fontsize=12)
+    ax1.set_title('Read Latency vs Configuration', fontsize=14, fontweight='bold')
+    ax1.legend(fontsize=11, loc='best')
+    ax1.grid(True, alpha=0.3)
+
+    # Subplot 2: Write Latency
+    df_write = df.sort_values(['num_writers', 'writer_rate', 'num_readers', 'reader_rate'])
+    df_write['config'] = df_write.apply(lambda row: f"W{int(row['num_writers'])}@{row['writer_rate']:.2f}_R{int(row['num_readers'])}@{int(row['reader_rate'])}", axis=1)
+    x_write = range(len(df_write))
+    ax2.plot(x_write, df_write['write_p50_ms'], 'o-', color='blue', label='Writer p50', linewidth=2, markersize=6)
+    ax2.plot(x_write, df_write['write_p99_ms'], 's--', color='darkblue', label='Writer p99', linewidth=2, markersize=6, alpha=0.7)
+
+    if baseline_df is not None and len(baseline_df) > 0:
+        baseline_p50 = baseline_df['write_p50_ms'].iloc[0]
+        baseline_p99 = baseline_df['write_p99_ms'].iloc[0]
+        ax2.axhline(y=baseline_p50, color='blue', linestyle=':', linewidth=2, label=f'Baseline p50 ({baseline_p50:.1f}ms)', alpha=0.8)
+        ax2.axhline(y=baseline_p99, color='darkblue', linestyle=':', linewidth=2, label=f'Baseline p99 ({baseline_p99:.1f}ms)', alpha=0.8)
+
+    ax2.set_xticks(x_write[::max(1, len(x_write)//30)])
+    ax2.set_xticklabels(df_write['config'].tolist()[::max(1, len(x_write)//30)], rotation=90, ha='right', fontsize=8)
+    ax2.set_ylabel('Write Latency (ms)', fontsize=12)
+    ax2.set_title('Write Latency vs Configuration', fontsize=14, fontweight='bold')
+    ax2.legend(fontsize=11, loc='best')
+    ax2.grid(True, alpha=0.3)
+
+    # Subplot 3: Precondition Failure Rate
+    grouped = df.groupby(['num_writers', 'writer_rate']).agg({
+        'precondition_failure_rate': 'mean'
+    }).reset_index()
+    grouped = grouped.sort_values(['num_writers', 'writer_rate'])
+    grouped['config'] = grouped.apply(lambda row: f"W{int(row['num_writers'])}@{row['writer_rate']:.2f}", axis=1)
+    x_precond = range(len(grouped))
+    ax3.plot(x_precond, grouped['precondition_failure_rate'], 'o-', color='red', label='Precondition Failure Rate', linewidth=2, markersize=8)
+
+    if baseline_df is not None and len(baseline_df) > 0:
+        baseline_rate = baseline_df['precondition_failure_rate'].iloc[0]
+        ax3.axhline(y=baseline_rate, color='red', linestyle=':', linewidth=2, label=f'Baseline (W1@0.1): {baseline_rate:.2f}%', alpha=0.8)
+
+    ax3.set_xticks(x_precond)
+    ax3.set_xticklabels(grouped['config'].tolist(), rotation=45, ha='right')
+    ax3.set_ylabel('Precondition Failure Rate (%)', fontsize=12)
+    ax3.set_title('Precondition Failure Rate vs Writer Configuration', fontsize=14, fontweight='bold')
+    ax3.legend(fontsize=11, loc='best')
+    ax3.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    output_file = csv_file.replace('.csv', '.png')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"\n✅ Comprehensive sweep plot saved to {output_file}")
+    plt.close()
 
 def main():
     sns.set_style("whitegrid")

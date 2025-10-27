@@ -426,10 +426,8 @@ async fn test_comprehensive_sweep() {
 
     match plot_result {
         Ok(status) if status.success() => {
-            println!("✅ 3 plots generated successfully:");
-            println!("   - comprehensive_sweep_v2_read_latency.png");
-            println!("   - comprehensive_sweep_v2_write_latency.png");
-            println!("   - comprehensive_sweep_v2_precondition_failure.png");
+            println!("✅ Comprehensive sweep plot generated:");
+            println!("   - comprehensive_sweep_v2.png (contains all 3 metrics)");
         }
         Ok(status) => {
             println!("⚠️  Plot generation failed with status: {}", status);
