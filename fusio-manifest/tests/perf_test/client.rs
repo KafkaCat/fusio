@@ -1,10 +1,15 @@
-use crate::perf_test::{metrics::MetricsCollector, utils::{KeyPool, KeyRegistry, WorkloadConfig}};
-use fusio::executor::tokio::TokioExecutor;
-use fusio_manifest::{s3::S3Manifest, types::Error};
-use rand::{seq::SliceRandom, Rng};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
+};
+
+use fusio::executor::tokio::TokioExecutor;
+use fusio_manifest::{s3::S3Manifest, types::Error};
+use rand::{seq::SliceRandom, Rng};
+
+use crate::perf_test::{
+    metrics::MetricsCollector,
+    utils::{KeyPool, KeyRegistry, WorkloadConfig},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -47,10 +52,12 @@ impl MockClient {
 
     #[tracing::instrument(skip(self), fields(writer_id = %self.id))]
     async fn run_write_transaction(&mut self) -> Result<(), Error> {
-        use rand::rngs::StdRng;
-        use rand::SeedableRng;
+        use rand::{rngs::StdRng, SeedableRng};
 
-        let key_pool = self.key_pool.as_ref().expect("KeyPool required for legacy Writer");
+        let key_pool = self
+            .key_pool
+            .as_ref()
+            .expect("KeyPool required for legacy Writer");
         let my_keys = key_pool.writer_keys(self.id);
         let mut rng = StdRng::from_entropy();
         let key = my_keys.choose(&mut rng).unwrap();
@@ -88,7 +95,8 @@ impl MockClient {
                     self.metrics.record_write_success(latency, attempt);
 
                     if !is_delete {
-                        self.metrics.record_successful_write(self.id, key.clone(), value);
+                        self.metrics
+                            .record_successful_write(self.id, key.clone(), value);
                     }
 
                     return Ok(());
@@ -126,7 +134,9 @@ impl MockClient {
 
     #[tracing::instrument(skip(self), fields(monotonic_writer_id = %self.id))]
     async fn run_monotonic_write_transaction(&mut self) -> Result<(), Error> {
-        let key_registry = self.key_registry.as_ref()
+        let key_registry = self
+            .key_registry
+            .as_ref()
             .expect("KeyRegistry required for MonotonicWriter");
 
         let key = key_registry.allocate_next_key();
@@ -154,7 +164,8 @@ impl MockClient {
                         "monotonic write committed successfully"
                     );
                     self.metrics.record_write_success(latency, attempt);
-                    self.metrics.record_successful_write(self.id, key.clone(), value.clone());
+                    self.metrics
+                        .record_successful_write(self.id, key.clone(), value.clone());
                     key_registry.register_written_key(key);
                     return Ok(());
                 }
@@ -191,8 +202,7 @@ impl MockClient {
 
     #[tracing::instrument(skip(self), fields(reader_id = %self.id))]
     async fn run_read_transaction(&mut self) -> Result<(), Error> {
-        use rand::rngs::StdRng;
-        use rand::SeedableRng;
+        use rand::{rngs::StdRng, SeedableRng};
 
         let mut rng = StdRng::from_entropy();
 
@@ -219,12 +229,8 @@ impl MockClient {
         let snapshot_txn_id = session.snapshot().txn_id.0;
         let value = session.get(key).await?;
 
-        self.metrics.record_read_observation(
-            self.id,
-            snapshot_txn_id,
-            key.clone(),
-            value,
-        );
+        self.metrics
+            .record_read_observation(self.id, snapshot_txn_id, key.clone(), value);
 
         session.end().await?;
 
@@ -272,9 +278,7 @@ impl MockClient {
 }
 
 fn generate_value(size: usize) -> String {
-    use rand::distributions::Alphanumeric;
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
+    use rand::{distributions::Alphanumeric, rngs::StdRng, SeedableRng};
 
     StdRng::from_entropy()
         .sample_iter(&Alphanumeric)

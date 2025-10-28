@@ -841,7 +841,7 @@ mod tests {
             let mut s = m.session_write().await.unwrap();
             s.put("a".into(), "1".into());
             s.put("b".into(), "2".into());
-            let _ = s.commit().await.unwrap();
+            s.commit().await.unwrap();
 
             let new_in_memory_stores = test_utils::in_memory_stores();
             let comp = Compactor::<String, String, _, _, _, _>::new(
@@ -873,7 +873,7 @@ mod tests {
                 InMemoryFs::new(),
                 "",
                 BackoffPolicy::default(),
-                BlockingExecutor::default(),
+                BlockingExecutor,
             );
             let plan = GcPlan {
                 against_head_tag: Some("etag".into()),
@@ -925,7 +925,7 @@ mod tests {
                 InMemoryFs::new(),
                 "",
                 BackoffPolicy::default(),
-                BlockingExecutor::default(),
+                BlockingExecutor,
             );
             let checkpoint_id = CheckpointId::new(42);
             let plan = GcPlan {
@@ -1136,7 +1136,7 @@ mod gc_compute_tests {
                 in_memory_stores.lease,
                 opts,
             );
-            let timer = BlockingExecutor::default();
+            let timer = BlockingExecutor;
             let store = FsGcPlanStore::new(InMemoryFs::new(), "", BackoffPolicy::default(), timer);
             // No head yet → None
             let t = comp.gc_compute(&store).await.unwrap();

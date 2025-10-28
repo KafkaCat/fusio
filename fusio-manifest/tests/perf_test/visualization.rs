@@ -1,7 +1,11 @@
-use crate::perf_test::{metrics::MetricsSummary, utils::{WorkloadConfig, create_config_label}};
+use std::{fs::File, path::Path};
+
 use csv::Writer;
-use std::fs::File;
-use std::path::Path;
+
+use crate::perf_test::{
+    metrics::MetricsSummary,
+    utils::{create_config_label, WorkloadConfig},
+};
 
 pub fn export_results_csv(
     filename: &str,

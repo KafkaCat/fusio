@@ -1,17 +1,32 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
-use std::time::Duration;
+
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone)]
 pub enum ChaosScenario {
     None,
-    NetworkLatency { delay_ms: u64 },
-    NetworkBlocking { block_duration_secs: u64, num_blocks: usize },
-    CpuOverload { num_threads: usize, utilization_pct: u8 },
-    Combined { delay_ms: u64, num_threads: usize, utilization_pct: u8 },
+    NetworkLatency {
+        delay_ms: u64,
+    },
+    NetworkBlocking {
+        block_duration_secs: u64,
+        num_blocks: usize,
+    },
+    CpuOverload {
+        num_threads: usize,
+        utilization_pct: u8,
+    },
+    Combined {
+        delay_ms: u64,
+        num_threads: usize,
+        utilization_pct: u8,
+    },
 }
 
 impl ChaosScenario {
@@ -19,14 +34,27 @@ impl ChaosScenario {
         match self {
             ChaosScenario::None => "baseline".to_string(),
             ChaosScenario::NetworkLatency { delay_ms } => format!("net-delay-{}ms", delay_ms),
-            ChaosScenario::NetworkBlocking { block_duration_secs, num_blocks } => {
+            ChaosScenario::NetworkBlocking {
+                block_duration_secs,
+                num_blocks,
+            } => {
                 format!("net-block-{}s-{}x", block_duration_secs, num_blocks)
             }
-            ChaosScenario::CpuOverload { num_threads, utilization_pct } => {
+            ChaosScenario::CpuOverload {
+                num_threads,
+                utilization_pct,
+            } => {
                 format!("cpu-{}threads-{}pct", num_threads, utilization_pct)
             }
-            ChaosScenario::Combined { delay_ms, num_threads, utilization_pct } => {
-                format!("combined-{}ms-{}threads-{}pct", delay_ms, num_threads, utilization_pct)
+            ChaosScenario::Combined {
+                delay_ms,
+                num_threads,
+                utilization_pct,
+            } => {
+                format!(
+                    "combined-{}ms-{}threads-{}pct",
+                    delay_ms, num_threads, utilization_pct
+                )
             }
         }
     }
@@ -53,13 +81,23 @@ impl ChaosController {
         match &self.scenario {
             ChaosScenario::None => {}
             ChaosScenario::NetworkLatency { .. } => {}
-            ChaosScenario::NetworkBlocking { block_duration_secs, num_blocks } => {
+            ChaosScenario::NetworkBlocking {
+                block_duration_secs,
+                num_blocks,
+            } => {
                 self.start_network_blocking(*block_duration_secs, *num_blocks);
             }
-            ChaosScenario::CpuOverload { num_threads, utilization_pct } => {
+            ChaosScenario::CpuOverload {
+                num_threads,
+                utilization_pct,
+            } => {
                 self.start_cpu_overload(*num_threads, *utilization_pct);
             }
-            ChaosScenario::Combined { num_threads, utilization_pct, .. } => {
+            ChaosScenario::Combined {
+                num_threads,
+                utilization_pct,
+                ..
+            } => {
                 self.start_cpu_overload(*num_threads, *utilization_pct);
             }
         }
@@ -70,8 +108,7 @@ impl ChaosController {
 
         let running = self.running.clone();
         let handle = tokio::spawn(async move {
-            use rand::rngs::StdRng;
-            use rand::{Rng, SeedableRng};
+            use rand::{rngs::StdRng, Rng, SeedableRng};
             let mut rng = StdRng::from_entropy();
 
             for i in 0..num_blocks {
@@ -86,9 +123,18 @@ impl ChaosController {
                     break;
                 }
 
-                println!("🔴 Network blocking event {}/{} - blocking for {}s", i + 1, num_blocks, block_duration_secs);
+                println!(
+                    "🔴 Network blocking event {}/{} - blocking for {}s",
+                    i + 1,
+                    num_blocks,
+                    block_duration_secs
+                );
                 tokio::time::sleep(Duration::from_secs(block_duration_secs)).await;
-                println!("🟢 Network blocking event {}/{} - unblocked", i + 1, num_blocks);
+                println!(
+                    "🟢 Network blocking event {}/{} - unblocked",
+                    i + 1,
+                    num_blocks
+                );
             }
         });
 
@@ -154,8 +200,18 @@ pub fn create_chaos_scenarios() -> Vec<ChaosScenario> {
         ChaosScenario::NetworkLatency { delay_ms: 100 },
         ChaosScenario::NetworkLatency { delay_ms: 200 },
         ChaosScenario::NetworkLatency { delay_ms: 500 },
-        ChaosScenario::NetworkBlocking { block_duration_secs: 10, num_blocks: 3 },
-        ChaosScenario::CpuOverload { num_threads: 4, utilization_pct: 80 },
-        ChaosScenario::Combined { delay_ms: 200, num_threads: 4, utilization_pct: 80 },
+        ChaosScenario::NetworkBlocking {
+            block_duration_secs: 10,
+            num_blocks: 3,
+        },
+        ChaosScenario::CpuOverload {
+            num_threads: 4,
+            utilization_pct: 80,
+        },
+        ChaosScenario::Combined {
+            delay_ms: 200,
+            num_threads: 4,
+            utilization_pct: 80,
+        },
     ]
 }

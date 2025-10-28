@@ -1,13 +1,22 @@
+#![allow(dead_code, clippy::field_reassign_with_default)]
+
 mod perf_test;
 
+use std::{env, sync::Arc, time::Instant};
+
 use fusio::executor::tokio::TokioExecutor;
-use fusio_manifest::{context::ManifestContext, s3::{self, S3Manifest}};
+use fusio_manifest::{
+    context::ManifestContext,
+    s3::{self, S3Manifest},
+};
 use perf_test::{
-    utils::{create_test_prefix, create_config_label, create_sweep_prefix, create_test_prefix_in_sweep, generate_all_configs, generate_all_configs_v2, load_aws_credentials, WorkloadConfig},
+    utils::{
+        create_config_label, create_sweep_prefix, create_test_prefix, create_test_prefix_in_sweep,
+        generate_all_configs_v2, load_aws_credentials, WorkloadConfig,
+    },
     visualization::{export_results_csv, export_single_result_csv},
     workload::WorkloadDriver,
 };
-use std::{env, sync::Arc, time::Instant};
 use tokio::task::JoinHandle;
 
 fn create_real_s3_manifest(
@@ -20,8 +29,8 @@ fn create_real_s3_manifest(
 fn create_real_s3_manifest_with_prefix(
     prefix: &str,
 ) -> Result<S3Manifest<String, String, TokioExecutor>, Box<dyn std::error::Error>> {
-    let bucket = env::var("FUSIO_MANIFEST_BUCKET")
-        .unwrap_or_else(|_| "liguoso-tonbo-s3".to_string());
+    let bucket =
+        env::var("FUSIO_MANIFEST_BUCKET").unwrap_or_else(|_| "liguoso-tonbo-s3".to_string());
 
     let creds = load_aws_credentials()?;
     let endpoint = env::var("AWS_ENDPOINT_URL").ok();
@@ -51,9 +60,8 @@ fn init_tracing() {
 
     let _ = fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                EnvFilter::new("fusio_manifest=debug,performance_test=info")
-            }),
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("fusio_manifest=debug,performance_test=info")),
         )
         .with_target(true)
         .with_line_number(true)
@@ -68,8 +76,10 @@ async fn verify_serializable_isolation(
     println!("\n=== Verifying Serializable Isolation ===");
 
     let snapshot = manifest.snapshot().await?;
-    println!("Final snapshot: txn_id={}, last_segment_seq={:?}",
-        snapshot.txn_id.0, snapshot.last_segment_seq);
+    println!(
+        "Final snapshot: txn_id={}, last_segment_seq={:?}",
+        snapshot.txn_id.0, snapshot.last_segment_seq
+    );
 
     let reader = manifest.session_read().await?;
     let scan_result = reader.scan().await;
@@ -93,10 +103,16 @@ async fn verify_serializable_isolation(
         return Ok(());
     }
 
-    println!("✅ Transaction IDs are monotonically increasing (final txn_id={})", snapshot.txn_id.0);
+    println!(
+        "✅ Transaction IDs are monotonically increasing (final txn_id={})",
+        snapshot.txn_id.0
+    );
 
     if let Some(last_seq) = snapshot.last_segment_seq {
-        println!("✅ Segment sequence verified (last_segment_seq={})", last_seq);
+        println!(
+            "✅ Segment sequence verified (last_segment_seq={})",
+            last_seq
+        );
     } else {
         println!("⚠️  No segments in snapshot");
     }
@@ -123,7 +139,11 @@ async fn verify_serializable_isolation_with_tracking(
     let reads = metrics.get_read_records();
 
     println!("\n=== Enhanced Isolation Verification (Option B) ===");
-    println!("Tracked {} successful writes and {} read observations", writes.len(), reads.len());
+    println!(
+        "Tracked {} successful writes and {} read observations",
+        writes.len(),
+        reads.len()
+    );
 
     let reader = manifest.session_read().await?;
     let scan_result = reader.scan().await;
@@ -140,21 +160,29 @@ async fn verify_serializable_isolation_with_tracking(
                 verified_writes += 1;
             }
             Some(_other) => {
-                let later_writes: Vec<_> = writes.iter()
+                let later_writes: Vec<_> = writes
+                    .iter()
                     .filter(|w| w.key == write.key && w.timestamp > write.timestamp)
                     .collect();
                 if !later_writes.is_empty() {
                     overwritten_writes += 1;
                 } else {
-                    println!("⚠️  Write of key '{}' has unexpected value (possibly deleted)", write.key);
+                    println!(
+                        "⚠️  Write of key '{}' has unexpected value (possibly deleted)",
+                        write.key
+                    );
                 }
             }
             None => {
-                let later_writes: Vec<_> = writes.iter()
+                let later_writes: Vec<_> = writes
+                    .iter()
                     .filter(|w| w.key == write.key && w.timestamp > write.timestamp)
                     .collect();
                 if later_writes.is_empty() {
-                    println!("⚠️  Write of key '{}' is missing from final state", write.key);
+                    println!(
+                        "⚠️  Write of key '{}' is missing from final state",
+                        write.key
+                    );
                 }
             }
         }
@@ -162,15 +190,20 @@ async fn verify_serializable_isolation_with_tracking(
 
     println!("✅ Verified {} writes in final state", verified_writes);
     if overwritten_writes > 0 {
-        println!("✅ {} writes were overwritten by later writes", overwritten_writes);
+        println!(
+            "✅ {} writes were overwritten by later writes",
+            overwritten_writes
+        );
     }
 
-    let mut valid_reads = 0;
     let mut monotonic_violations = 0;
 
     let mut reader_txn_ids: HashMap<usize, Vec<(u64, std::time::Instant)>> = HashMap::new();
     for read in reads.iter() {
-        reader_txn_ids.entry(read.reader_id).or_insert_with(Vec::new).push((read.snapshot_txn_id, read.timestamp));
+        reader_txn_ids
+            .entry(read.reader_id)
+            .or_default()
+            .push((read.snapshot_txn_id, read.timestamp));
     }
 
     for (reader_id, txn_observations) in reader_txn_ids.iter() {
@@ -182,16 +215,22 @@ async fn verify_serializable_isolation_with_tracking(
             let (txn2, _) = window[1];
             if txn2 < txn1 {
                 monotonic_violations += 1;
-                println!("⚠️  Reader {} saw non-monotonic txn_ids: {} then {}", reader_id, txn1, txn2);
+                println!(
+                    "⚠️  Reader {} saw non-monotonic txn_ids: {} then {}",
+                    reader_id, txn1, txn2
+                );
             }
         }
     }
 
-    valid_reads = reads.len() - monotonic_violations;
+    let valid_reads = reads.len() - monotonic_violations;
     println!("✅ {} reads observed valid snapshots", valid_reads);
 
     if monotonic_violations > 0 {
-        println!("❌ {} monotonic read violations detected!", monotonic_violations);
+        println!(
+            "❌ {} monotonic read violations detected!",
+            monotonic_violations
+        );
         return Err("Monotonic read violations detected".into());
     }
 
@@ -208,9 +247,8 @@ async fn test_baseline() {
 
     let config = WorkloadConfig::default();
 
-    let manifest = Arc::new(
-        create_real_s3_manifest("baseline").expect("Failed to create S3 manifest")
-    );
+    let manifest =
+        Arc::new(create_real_s3_manifest("baseline").expect("Failed to create S3 manifest"));
 
     let driver = WorkloadDriver::new(config.clone(), manifest.clone());
 
@@ -218,15 +256,24 @@ async fn test_baseline() {
     let summary = driver.run().await;
     summary.print_report();
 
-    export_single_result_csv("test_baseline.csv", &config, &summary)
-        .expect("Failed to export CSV");
+    export_single_result_csv("test_baseline.csv", &config, &summary).expect("Failed to export CSV");
 
-    println!("\n💡 To generate plots, run: python3 plot_results.py test_baseline.csv num_writers \"Baseline Test\"");
+    println!(
+        "\n💡 To generate plots, run: python3 plot_results.py test_baseline.csv num_writers \
+         \"Baseline Test\""
+    );
 
     println!("\n📊 Latency Summary:");
-    println!("  Writer p50: {:.2}ms, p99: {:.2}ms", summary.write_p50_ms, summary.write_p99_ms);
-    println!("  Reader p50: {:.2}ms, p99: {:.2}ms", summary.read_p50_ms, summary.read_p99_ms);
-    println!("  Precondition failures: {} ({:.2}%)",
+    println!(
+        "  Writer p50: {:.2}ms, p99: {:.2}ms",
+        summary.write_p50_ms, summary.write_p99_ms
+    );
+    println!(
+        "  Reader p50: {:.2}ms, p99: {:.2}ms",
+        summary.read_p50_ms, summary.read_p99_ms
+    );
+    println!(
+        "  Precondition failures: {} ({:.2}%)",
         summary.total_precondition_failures,
         summary.precondition_failure_rate * 100.0
     );
@@ -245,8 +292,9 @@ async fn test_baseline() {
 #[tokio::test]
 #[ignore]
 async fn test_overlap_sweep() {
-    use perf_test::visualization::export_results_csv;
     use std::time::Duration;
+
+    use perf_test::visualization::export_results_csv;
 
     init_tracing();
 
@@ -258,9 +306,8 @@ async fn test_overlap_sweep() {
         config.duration = Duration::from_secs(120);
 
         let test_name = format!("overlap-{}", overlap_ratio);
-        let manifest = Arc::new(
-            create_real_s3_manifest(&test_name).expect("Failed to create S3 manifest")
-        );
+        let manifest =
+            Arc::new(create_real_s3_manifest(&test_name).expect("Failed to create S3 manifest"));
 
         let driver = WorkloadDriver::new(config.clone(), manifest.clone());
 
@@ -275,10 +322,12 @@ async fn test_overlap_sweep() {
         results.push((config, summary));
     }
 
-    export_results_csv("sweep_overlap.csv", &results)
-        .expect("Failed to export CSV");
+    export_results_csv("sweep_overlap.csv", &results).expect("Failed to export CSV");
 
-    println!("\n💡 To generate plots, run: python3 plot_results.py sweep_overlap.csv key_overlap_ratio \"Precondition Failure vs Key Overlap\"");
+    println!(
+        "\n💡 To generate plots, run: python3 plot_results.py sweep_overlap.csv key_overlap_ratio \
+         \"Precondition Failure vs Key Overlap\""
+    );
 
     println!("\n=== Overlap Sweep Summary ===");
     for (config, summary) in &results {
@@ -302,13 +351,18 @@ async fn test_comprehensive_sweep() {
     let total_configs = all_configs.len();
 
     let sweep_prefix = create_sweep_prefix();
-    let bucket = env::var("FUSIO_MANIFEST_BUCKET")
-        .unwrap_or_else(|_| "liguoso-tonbo-s3".to_string());
+    let bucket =
+        env::var("FUSIO_MANIFEST_BUCKET").unwrap_or_else(|_| "liguoso-tonbo-s3".to_string());
 
-    println!("\n=== Running Comprehensive Configuration Sweep (V2 - Full Matrix + Overlap Ratio) ===");
+    println!(
+        "\n=== Running Comprehensive Configuration Sweep (V2 - Full Matrix + Overlap Ratio) ==="
+    );
     println!("Total configurations: {}", total_configs);
     println!("Config space:");
-    println!("  - Writer/Reader matrix: (3 writers × 4 rates × 4 readers × 3 reader_rates) - baseline = 132 tests");
+    println!(
+        "  - Writer/Reader matrix: (3 writers × 4 rates × 4 readers × 3 reader_rates) - baseline \
+         = 132 tests"
+    );
     println!("  - Overlap ratio sweep: 2 writers @ 0.1 TPS × 10 overlap ratios = 10 tests");
     println!("Writer rates: [0.02, 0.05, 0.1, 0.2]");
     println!("Reader rates: [100, 200, 300]");
@@ -316,7 +370,10 @@ async fn test_comprehensive_sweep() {
     println!("Note: W1@0.1 excluded (already tested in baseline)");
     println!("Duration: 60s for matrix tests, 120s for overlap tests");
     println!("Parallel execution: 8 concurrent tests");
-    println!("Estimated total time: ~{} minutes", (132 * 60 + 10 * 120) / (8 * 60));
+    println!(
+        "Estimated total time: ~{} minutes",
+        (132 * 60 + 10 * 120) / (8 * 60)
+    );
     println!("S3 Bucket: {}", bucket);
     println!("S3 Prefix: {}\n", sweep_prefix);
 
@@ -328,7 +385,19 @@ async fn test_comprehensive_sweep() {
 
     for batch_idx in 0..num_batches {
         let batch_start = Instant::now();
-        let mut handles: Vec<JoinHandle<Result<(WorkloadConfig, MetricsSummary, Arc<S3Manifest<String, String, TokioExecutor>>, Arc<perf_test::metrics::MetricsCollector>), String>>> = Vec::new();
+        let mut handles: Vec<
+            JoinHandle<
+                Result<
+                    (
+                        WorkloadConfig,
+                        MetricsSummary,
+                        Arc<S3Manifest<String, String, TokioExecutor>>,
+                        Arc<perf_test::metrics::MetricsCollector>,
+                    ),
+                    String,
+                >,
+            >,
+        > = Vec::new();
 
         let start_idx = batch_idx * PARALLEL_LIMIT;
         let end_idx = (start_idx + PARALLEL_LIMIT).min(total_configs);
@@ -339,14 +408,14 @@ async fn test_comprehensive_sweep() {
             let sweep_prefix_clone = sweep_prefix.clone();
 
             let handle = tokio::spawn(async move {
-                let test_prefix = create_test_prefix_in_sweep(
-                    &sweep_prefix_clone,
-                    config_idx,
-                    &config_label
-                );
+                let test_prefix =
+                    create_test_prefix_in_sweep(&sweep_prefix_clone, config_idx, &config_label);
 
-                let manifest = Arc::new(create_real_s3_manifest_with_prefix(&test_prefix)
-                    .map_err(|e| format!("Failed to create manifest for {}: {}", config_label, e))?);
+                let manifest = Arc::new(
+                    create_real_s3_manifest_with_prefix(&test_prefix).map_err(|e| {
+                        format!("Failed to create manifest for {}: {}", config_label, e)
+                    })?,
+                );
 
                 let driver = WorkloadDriver::new(config.clone(), manifest.clone());
                 let summary = driver.run().await;
@@ -360,7 +429,10 @@ async fn test_comprehensive_sweep() {
 
         let batch_results: Vec<_> = futures_util::future::join_all(handles).await;
 
-        let mut batch_manifest_for_verification: Option<(Arc<S3Manifest<String, String, TokioExecutor>>, Arc<perf_test::metrics::MetricsCollector>)> = None;
+        let mut batch_manifest_for_verification: Option<(
+            Arc<S3Manifest<String, String, TokioExecutor>>,
+            Arc<perf_test::metrics::MetricsCollector>,
+        )> = None;
 
         for result in batch_results {
             match result {
@@ -380,13 +452,20 @@ async fn test_comprehensive_sweep() {
         }
 
         if let Some((manifest, metrics)) = batch_manifest_for_verification {
-            println!("🔍 Verifying serializable isolation for batch {}...", batch_idx + 1);
+            println!(
+                "🔍 Verifying serializable isolation for batch {}...",
+                batch_idx + 1
+            );
             match verify_serializable_isolation_with_tracking(&manifest, &metrics).await {
                 Ok(_) => {
                     println!("✅ Batch {} isolation verification passed", batch_idx + 1);
                 }
                 Err(e) => {
-                    eprintln!("⚠️  Batch {} isolation verification failed: {}", batch_idx + 1, e);
+                    eprintln!(
+                        "⚠️  Batch {} isolation verification failed: {}",
+                        batch_idx + 1,
+                        e
+                    );
                     eprintln!("   Continuing with remaining tests...");
                 }
             }
@@ -414,17 +493,26 @@ async fn test_comprehensive_sweep() {
 
     let total_duration = overall_start.elapsed();
 
-    println!("\n✅ All tests completed in {} minutes {:.0} seconds",
+    println!(
+        "\n✅ All tests completed in {} minutes {:.0} seconds",
         total_duration.as_secs() / 60,
-        total_duration.as_secs() % 60);
-    println!("Successfully completed: {}/{} tests", all_results.len(), total_configs);
+        total_duration.as_secs() % 60
+    );
+    println!(
+        "Successfully completed: {}/{} tests",
+        all_results.len(),
+        total_configs
+    );
 
-    export_results_csv("comprehensive_sweep_v2.csv", &all_results)
-        .expect("Failed to export CSV");
+    export_results_csv("comprehensive_sweep_v2.csv", &all_results).expect("Failed to export CSV");
 
     println!("\nGenerating 4 visualization graphs...");
     let plot_result = std::process::Command::new("python3")
-        .args(["plot_results.py", "comprehensive_sweep_v2.csv", "--comprehensive"])
+        .args([
+            "plot_results.py",
+            "comprehensive_sweep_v2.csv",
+            "--comprehensive",
+        ])
         .status();
 
     match plot_result {
@@ -434,11 +522,17 @@ async fn test_comprehensive_sweep() {
         }
         Ok(status) => {
             println!("⚠️  Plot generation failed with status: {}", status);
-            println!("💡 Run manually: python3 plot_results.py comprehensive_sweep_v2.csv --comprehensive");
+            println!(
+                "💡 Run manually: python3 plot_results.py comprehensive_sweep_v2.csv \
+                 --comprehensive"
+            );
         }
         Err(e) => {
             println!("⚠️  Could not run plot script: {}", e);
-            println!("💡 Run manually: python3 plot_results.py comprehensive_sweep_v2.csv --comprehensive");
+            println!(
+                "💡 Run manually: python3 plot_results.py comprehensive_sweep_v2.csv \
+                 --comprehensive"
+            );
         }
     }
 
@@ -471,11 +565,17 @@ async fn test_comprehensive_sweep() {
     }
 
     println!("\n=== Overlap Ratio Sweep Results (2 Writers @ 0.1 TPS) ===");
-    println!("{:<15} {:<20} {:<20} {:<15}", "Overlap Ratio", "Failure Rate (%)", "Retry Success (%)", "Write TPS");
+    println!(
+        "{:<15} {:<20} {:<20} {:<15}",
+        "Overlap Ratio", "Failure Rate (%)", "Retry Success (%)", "Write TPS"
+    );
     println!("{}", "-".repeat(70));
 
-    let overlap_results: Vec<_> = all_results.iter()
-        .filter(|(config, _)| config.num_writers == 2 && config.writer_rate == 0.1 && config.key_overlap_ratio > 0.0)
+    let overlap_results: Vec<_> = all_results
+        .iter()
+        .filter(|(config, _)| {
+            config.num_writers == 2 && config.writer_rate == 0.1 && config.key_overlap_ratio > 0.0
+        })
         .collect();
 
     let mut found_sweet_spot = false;
@@ -492,26 +592,29 @@ async fn test_comprehensive_sweep() {
 
         println!(
             "{:<15.2} {:<20.2} {:<20.2} {:<15.2}{}",
-            config.key_overlap_ratio,
-            failure_pct,
-            retry_success_pct,
-            summary.write_tps,
-            marker
+            config.key_overlap_ratio, failure_pct, retry_success_pct, summary.write_tps, marker
         );
     }
 
     if found_sweet_spot {
         println!("\n✅ Found configuration(s) near 10% failure rate target");
     } else {
-        println!("\n⚠️  No configuration found near 10% failure rate. Consider adjusting overlap ratios.");
+        println!(
+            "\n⚠️  No configuration found near 10% failure rate. Consider adjusting overlap \
+             ratios."
+        );
     }
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_chaos_sweep() {
-    use perf_test::{chaos::{create_chaos_scenarios, ChaosController}, metrics::MetricsSummary, utils::get_best_config_from_csv};
     use std::time::Duration;
+
+    use perf_test::{
+        chaos::{create_chaos_scenarios, ChaosController},
+        metrics::MetricsSummary,
+    };
 
     init_tracing();
 
@@ -521,9 +624,15 @@ async fn test_chaos_sweep() {
     best_config.writer_rate = 0.1;
     best_config.duration = Duration::from_secs(300);
 
-    println!("Best config: num_writers={}, writer_rate={}, key_overlap_ratio={}, num_readers={}, reader_rate={}",
-        best_config.num_writers, best_config.writer_rate, best_config.key_overlap_ratio,
-        best_config.num_readers, best_config.reader_rate);
+    println!(
+        "Best config: num_writers={}, writer_rate={}, key_overlap_ratio={}, num_readers={}, \
+         reader_rate={}",
+        best_config.num_writers,
+        best_config.writer_rate,
+        best_config.key_overlap_ratio,
+        best_config.num_readers,
+        best_config.reader_rate
+    );
 
     let scenarios = create_chaos_scenarios();
     let scenario_labels: Vec<String> = scenarios.iter().map(|s| s.label()).collect();
@@ -541,7 +650,7 @@ async fn test_chaos_sweep() {
 
             let test_name = format!("chaos-{}", scenario_label);
             let manifest = Arc::new(
-                create_real_s3_manifest(&test_name).expect("Failed to create S3 manifest")
+                create_real_s3_manifest(&test_name).expect("Failed to create S3 manifest"),
             );
 
             let mut chaos_controller = ChaosController::new(scenario.clone());
@@ -559,7 +668,10 @@ async fn test_chaos_sweep() {
             println!("🔍 Verifying serializable isolation...");
             match verify_serializable_isolation_with_tracking(&manifest, &metrics).await {
                 Ok(_) => println!("✅ Isolation verification passed for {}", scenario_label),
-                Err(e) => println!("⚠️  Isolation verification failed for {}: {}", scenario_label, e),
+                Err(e) => println!(
+                    "⚠️  Isolation verification failed for {}: {}",
+                    scenario_label, e
+                ),
             }
 
             Ok::<(WorkloadConfig, MetricsSummary), String>((config, summary))
@@ -587,8 +699,7 @@ async fn test_chaos_sweep() {
         }
     }
 
-    export_results_csv("chaos_sweep.csv", &results)
-        .expect("Failed to export chaos results");
+    export_results_csv("chaos_sweep.csv", &results).expect("Failed to export chaos results");
 
     println!("\n=== Chaos Sweep Summary ===");
     for (idx, label) in scenario_labels.iter().enumerate() {

@@ -1,4 +1,3 @@
-use hdrhistogram::Histogram;
 use std::{
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -6,6 +5,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+use hdrhistogram::Histogram;
 
 #[derive(Debug, Clone)]
 pub struct WriteRecord {
@@ -74,7 +75,13 @@ impl MetricsCollector {
         });
     }
 
-    pub fn record_read_observation(&self, reader_id: usize, snapshot_txn_id: u64, key: String, value: Option<String>) {
+    pub fn record_read_observation(
+        &self,
+        reader_id: usize,
+        snapshot_txn_id: u64,
+        key: String,
+        value: Option<String>,
+    ) {
         self.reader_observations.lock().unwrap().push(ReadRecord {
             reader_id,
             snapshot_txn_id,
@@ -118,7 +125,8 @@ impl MetricsCollector {
     }
 
     pub fn record_max_retries_exceeded(&self) {
-        self.total_max_retries_exceeded.fetch_add(1, Ordering::Relaxed);
+        self.total_max_retries_exceeded
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn record_write_error(&self, _latency: Duration) {
@@ -262,8 +270,14 @@ impl MetricsSummary {
         println!("\n--- Retry Effectiveness ---");
         println!("Retry failures:        {}", self.total_retry_failures);
         println!("Max retries exceeded:  {}", self.total_max_retries_exceeded);
-        println!("Retry success rate:    {:.2}%", self.retry_success_rate * 100.0);
-        println!("Retry failure rate:    {:.2}%", self.retry_failure_rate * 100.0);
+        println!(
+            "Retry success rate:    {:.2}%",
+            self.retry_success_rate * 100.0
+        );
+        println!(
+            "Retry failure rate:    {:.2}%",
+            self.retry_failure_rate * 100.0
+        );
         println!("\n--- Write Latency (successful commits) ---");
         println!("p50: {:.2}ms", self.write_p50_ms);
         println!("p95: {:.2}ms", self.write_p95_ms);

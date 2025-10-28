@@ -1,9 +1,15 @@
-use std::time::{Duration, SystemTime};
-use std::path::PathBuf;
-use std::env;
-use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
+use std::{
+    env,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+    time::{Duration, SystemTime},
+};
+
 use ini::Ini;
-use rand::{seq::SliceRandom, rngs::StdRng, SeedableRng};
+use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 
 #[derive(Debug, Clone)]
 pub struct WorkloadConfig {
@@ -89,9 +95,7 @@ pub struct KeyPool {
 
 impl KeyPool {
     pub fn new(total_keys: usize, num_writers: usize, overlap_ratio: f64) -> Self {
-        let all_keys: Vec<String> = (0..total_keys)
-            .map(|i| format!("key_{:06}", i))
-            .collect();
+        let all_keys: Vec<String> = (0..total_keys).map(|i| format!("key_{:06}", i)).collect();
 
         if num_writers == 0 {
             return Self {
@@ -158,17 +162,18 @@ pub fn create_sweep_prefix() -> String {
     )
 }
 
-pub fn create_test_prefix_in_sweep(sweep_prefix: &str, test_index: usize, config_label: &str) -> String {
+pub fn create_test_prefix_in_sweep(
+    sweep_prefix: &str,
+    test_index: usize,
+    config_label: &str,
+) -> String {
     format!("{}/test-{:03}-{}", sweep_prefix, test_index, config_label)
 }
 
 pub fn create_config_label(config: &WorkloadConfig) -> String {
     format!(
         "W{}_WR{:.2}_RD{}_RT{}",
-        config.num_writers,
-        config.writer_rate,
-        config.num_readers,
-        config.reader_rate as u32
+        config.num_writers, config.writer_rate, config.num_readers, config.reader_rate as u32
     )
 }
 
@@ -260,12 +265,12 @@ pub fn generate_all_configs() -> Vec<WorkloadConfig> {
     configs
 }
 
-pub fn get_best_config_from_csv(csv_path: &str) -> Result<WorkloadConfig, Box<dyn std::error::Error>> {
+pub fn get_best_config_from_csv(
+    csv_path: &str,
+) -> Result<WorkloadConfig, Box<dyn std::error::Error>> {
     use csv::ReaderBuilder;
 
-    let mut reader = ReaderBuilder::new()
-        .has_headers(true)
-        .from_path(csv_path)?;
+    let mut reader = ReaderBuilder::new().has_headers(true).from_path(csv_path)?;
 
     let mut best_config: Option<WorkloadConfig> = None;
     let mut best_failure_rate = f64::MAX;
@@ -273,25 +278,19 @@ pub fn get_best_config_from_csv(csv_path: &str) -> Result<WorkloadConfig, Box<dy
     for result in reader.records() {
         let record = result?;
 
-        let num_writers: usize = record.get(1)
-            .ok_or("Missing num_writers")?.parse()?;
-        let num_readers: usize = record.get(2)
-            .ok_or("Missing num_readers")?.parse()?;
-        let writer_rate: f64 = record.get(3)
-            .ok_or("Missing writer_rate")?.parse()?;
-        let reader_rate: f64 = record.get(4)
-            .ok_or("Missing reader_rate")?.parse()?;
-        let key_pool_size: usize = record.get(5)
-            .ok_or("Missing key_pool_size")?.parse()?;
-        let key_overlap_ratio: f64 = record.get(6)
-            .ok_or("Missing key_overlap_ratio")?.parse()?;
-        let max_retry_count: usize = record.get(7)
-            .ok_or("Missing max_retry_count")?.parse()?;
-        let duration_secs: f64 = record.get(8)
-            .ok_or("Missing duration")?.parse()?;
+        let num_writers: usize = record.get(1).ok_or("Missing num_writers")?.parse()?;
+        let num_readers: usize = record.get(2).ok_or("Missing num_readers")?.parse()?;
+        let writer_rate: f64 = record.get(3).ok_or("Missing writer_rate")?.parse()?;
+        let reader_rate: f64 = record.get(4).ok_or("Missing reader_rate")?.parse()?;
+        let key_pool_size: usize = record.get(5).ok_or("Missing key_pool_size")?.parse()?;
+        let key_overlap_ratio: f64 = record.get(6).ok_or("Missing key_overlap_ratio")?.parse()?;
+        let max_retry_count: usize = record.get(7).ok_or("Missing max_retry_count")?.parse()?;
+        let duration_secs: f64 = record.get(8).ok_or("Missing duration")?.parse()?;
 
-        let precondition_failure_rate: f64 = record.get(9)
-            .ok_or("Missing precondition_failure_rate")?.parse()?;
+        let precondition_failure_rate: f64 = record
+            .get(9)
+            .ok_or("Missing precondition_failure_rate")?
+            .parse()?;
 
         if precondition_failure_rate < best_failure_rate {
             best_failure_rate = precondition_failure_rate;
@@ -351,9 +350,11 @@ pub fn load_aws_credentials() -> Result<AwsCredentials, Box<dyn std::error::Erro
 
     if !credentials_path.exists() {
         return Err(format!(
-            "AWS credentials file not found at {:?}. Please create it, set AWS_ACCESS_KEY_ID environment variable, or use EC2 IAM role.",
+            "AWS credentials file not found at {:?}. Please create it, set AWS_ACCESS_KEY_ID \
+             environment variable, or use EC2 IAM role.",
             credentials_path
-        ).into());
+        )
+        .into());
     }
 
     println!("Using AWS credentials from file: {:?}", credentials_path);
@@ -432,10 +433,7 @@ mod tests {
         let w0_keys = pool.writer_keys(0);
         let w1_keys = pool.writer_keys(1);
 
-        let overlap_count = w0_keys
-            .iter()
-            .filter(|k| w1_keys.contains(k))
-            .count();
+        let overlap_count = w0_keys.iter().filter(|k| w1_keys.contains(k)).count();
 
         assert!(overlap_count >= overlap.saturating_sub(1));
         assert!(overlap_count <= overlap + 1);

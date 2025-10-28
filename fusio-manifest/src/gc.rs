@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn mem_gc_plan_store_semantics() {
         use futures_executor::block_on;
-        let timer = BlockingExecutor::default();
+        let timer = BlockingExecutor;
         let store = FsGcPlanStore::new(InMemoryFs::new(), "", BackoffPolicy::default(), timer);
         // load none
         assert!(block_on(store.load()).unwrap().is_none());

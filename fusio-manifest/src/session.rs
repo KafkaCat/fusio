@@ -510,8 +510,14 @@ where
         let expected_tag = snapshot.head_tag.clone();
 
         let staged = core::mem::take(&mut self.staged);
-        let num_puts = staged.iter().filter(|(_, op, _)| matches!(op, Op::Put)).count();
-        let num_dels = staged.iter().filter(|(_, op, _)| matches!(op, Op::Del)).count();
+        let num_puts = staged
+            .iter()
+            .filter(|(_, op, _)| matches!(op, Op::Put))
+            .count();
+        let num_dels = staged
+            .iter()
+            .filter(|(_, op, _)| matches!(op, Op::Del))
+            .count();
 
         tracing::debug!(
             txn_id = %next_txn,

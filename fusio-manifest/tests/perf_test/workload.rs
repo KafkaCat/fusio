@@ -1,11 +1,13 @@
+use std::sync::Arc;
+
+use fusio::executor::tokio::TokioExecutor;
+use fusio_manifest::s3::S3Manifest;
+
 use crate::perf_test::{
     client::{ClientType, MockClient},
     metrics::{MetricsCollector, MetricsSummary},
-    utils::{KeyPool, KeyRegistry, WorkloadConfig},
+    utils::{KeyPool, WorkloadConfig},
 };
-use fusio::executor::tokio::TokioExecutor;
-use fusio_manifest::s3::S3Manifest;
-use std::sync::Arc;
 
 pub struct WorkloadDriver {
     config: WorkloadConfig,
